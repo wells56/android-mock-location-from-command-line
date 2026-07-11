@@ -20,20 +20,28 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # 關鍵修正：自動尋找 gradlew 檔案在哪個資料夾，並賦予執行權限
-    - name: Find gradlew and Grant Permission
+    # 關鍵修正：安裝 Ubuntu 系統內建的 gradle，並強行在專案內建立 gradlew
+    - name: Install Gradle and Generate Wrapper
       run: |
-        GRADLEW_PATH=$(find . -name "gradlew" -print -quit)
-        if [ -z "$GRADLEW_PATH" ]; then
-          echo "錯誤：整個專案內都找不到 gradlew 檔案！"
+        sudo apt-get update && sudo apt-get install -y gradle
+        # 尋找 settings.gradle 或是 build.gradle 所在的目錄，那是真正的專案根目錄
+        BUILD_FILE_PATH=$(find . -name "build.gradle" -print -quit)
+        if [ -z "$BUILD_FILE_PATH" ]; then
+          echo "錯誤：專案中連 build.gradle 都找不到！"
           exit 1
         fi
-        GRADLE_DIR=$(dirname "$GRADLEW_PATH")
-        echo "找到 Gradle 目錄在: $GRADLE_DIR"
-        chmod +x "$GRADLEW_PATH"
-        echo "SUB_DIR=$GRADLE_DIR" >> $GITHUB_ENV
+        PROJECT_DIR=$(dirname "$BUILD_FILE_PATH")
+        echo "找到 Android 專案目錄在: $PROJECT_DIR"
+        
+        # 切換進去並強行生成 gradlew 檔案
+        cd "$PROJECT_DIR"
+        gradle wrapper --gradle-version 8.5
+        chmod +x gradlew
+        
+        # 紀錄目錄路徑供下一步使用
+        echo "SUB_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
-    # 切換到正確的子資料夾進行 Gradle 打包
+    # 執行打包
     - name: Build with Gradle
       run: |
         cd ${{ env.SUB_DIR }}
