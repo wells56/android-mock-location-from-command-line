@@ -20,15 +20,23 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Install Gradle and Complete Overwrite Config
+    - name: Install Gradle and Restructure Project
       run: |
         sudo apt-get update && sudo apt-get install -y gradle
         
-        # 1. 強行生成 Gradle Wrapper 8.5
+        # 1. 強行生成現代 Gradle Wrapper 8.5
         gradle wrapper --gradle-version 8.5
         chmod +x gradlew
         
-        # 2. 強制重寫 settings.gradle（加入正確的倉庫設定）
+        # 2. 建立標準的現代 Android 目錄結構
+        mkdir -p app/src/main
+        
+        # 3. 把舊專案的核心原始碼與清單搬移到標準現代位置
+        if [ -d "src" ]; then mv src app/src/main/; fi
+        if [ -f "AndroidManifest.xml" ]; then mv AndroidManifest.xml app/src/main/; fi
+        if [ -d "res" ]; then mv res app/src/main/; fi
+        
+        # 4. 強制寫入現代根目錄的 settings.gradle
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
@@ -38,17 +46,22 @@ jobs:
             }
         }
         dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.PRESERVE_EXISTING)
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
             repositories {
                 google()
                 mavenCentral()
             }
         }
-        rootProject.name = "android-mock-location-from-command-line"
+        include ':app'
         EOF
 
-        # 3. 強制重寫 build.gradle（改成現代相容格式，並直接拉高到 Android 15/16 相容的 SDK 35）
+        # 5. 強制寫入現代根目錄的 build.gradle
         cat << 'EOF' > build.gradle
+        // 根目錄 build.gradle 保持乾淨即可
+        EOF
+
+        # 6. 強制寫入現代子目錄 app/build.gradle（將套件名稱改成符合你 Python 要求的 com.adbmockgps，並拉高到 Android 15/16 相容的 SDK 35）
+        cat << 'EOF' > app/build.gradle
         plugins {
             id 'com.android.application' version '8.2.2'
         }
@@ -73,20 +86,17 @@ jobs:
         }
 
         dependencies {
-            // 這個極簡專案只需要 Android 基礎核心庫
             implementation 'androidx.appcompat:appcompat:1.6.1'
         }
         EOF
 
-    # 4. 執行建置打包
+    # 7. 執行標準建置打包
     - name: Build with Gradle
-      run: ./gradlew assembleDebug --no-daemon
+      run: ./gradlew :app:assembleDebug --no-daemon
 
-    # 5. 收集編譯出來的 APK 並上傳
+    # 8. 收集編譯出來的 APK 並上傳
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: my-mock-gps-apk
-        path: |
-          **/build/outputs/apk/debug/*.apk
-          **/build/outputs/apk/*.apk
+        path: app/build/outputs/apk/debug/*.apk
