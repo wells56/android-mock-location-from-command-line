@@ -10,11 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 升級到支援最新 Node 環境的套件版本，並忽略棄用警告
     - name: Checkout Code
       uses: actions/checkout@v4
-      with:
-        set-safe-directory: 'true'
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -23,15 +20,29 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    # 關鍵修正：自動尋找 gradlew 檔案在哪個資料夾，並賦予執行權限
+    - name: Find gradlew and Grant Permission
+      run: |
+        GRADLEW_PATH=$(find . -name "gradlew" -print -quit)
+        if [ -z "$GRADLEW_PATH" ]; then
+          echo "錯誤：整個專案內都找不到 gradlew 檔案！"
+          exit 1
+        fi
+        GRADLE_DIR=$(dirname "$GRADLEW_PATH")
+        echo "找到 Gradle 目錄在: $GRADLE_DIR"
+        chmod +x "$GRADLEW_PATH"
+        echo "SUB_DIR=$GRADLE_DIR" >> $GITHUB_ENV
 
-    # 強制 Gradle 忽略不相容的警告，直接硬塞打包
+    # 切換到正確的子資料夾進行 Gradle 打包
     - name: Build with Gradle
-      run: ./gradlew assembleDebug --no-daemon
+      run: |
+        cd ${{ env.SUB_DIR }}
+        ./gradlew assembleDebug --no-daemon
 
+    # 搜尋編譯出來的 APK 並上傳
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: my-mock-gps-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: |
+          **/build/outputs/apk/debug/*.apk
