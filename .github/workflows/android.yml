@@ -20,20 +20,15 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Install Gradle and Fix Project Structure
+    - name: Install Gradle and Complete Overwrite Config
       run: |
         sudo apt-get update && sudo apt-get install -y gradle
         
-        BUILD_FILE_PATH=$(find . -name "build.gradle" -print -quit)
-        PROJECT_DIR=$(dirname "$BUILD_FILE_PATH")
-        echo "找到 Android 專案目錄在: $PROJECT_DIR"
-        cd "$PROJECT_DIR"
-        
-        # 強行生成相容舊專案的 Gradle Wrapper
+        # 1. 強行生成 Gradle Wrapper 8.5
         gradle wrapper --gradle-version 8.5
         chmod +x gradlew
         
-        # 【關鍵修正】無中生有建立 settings.gradle，強制告訴 Gradle 去哪裡下載 Android 打包外掛
+        # 2. 強制重寫 settings.gradle（加入正確的倉庫設定）
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
@@ -43,7 +38,7 @@ jobs:
             }
         }
         dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositoriesMode.set(RepositoriesMode.PRESERVE_EXISTING)
             repositories {
                 google()
                 mavenCentral()
@@ -52,15 +47,42 @@ jobs:
         rootProject.name = "android-mock-location-from-command-line"
         EOF
 
-        echo "SUB_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+        # 3. 強制重寫 build.gradle（改成現代相容格式，並直接拉高到 Android 15/16 相容的 SDK 35）
+        cat << 'EOF' > build.gradle
+        plugins {
+            id 'com.android.application' version '8.2.2'
+        }
 
-    # 執行打包
+        android {
+            namespace "com.adbmockgps"
+            compileSdkVersion 35
+
+            defaultConfig {
+                applicationId "com.adbmockgps"
+                minSdkVersion 26
+                targetSdkVersion 35
+                versionCode 1
+                versionName "1.0"
+            }
+
+            buildTypes {
+                release {
+                    minifyEnabled false
+                }
+            }
+        }
+
+        dependencies {
+            // 這個極簡專案只需要 Android 基礎核心庫
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
+        EOF
+
+    # 4. 執行建置打包
     - name: Build with Gradle
-      run: |
-        cd ${{ env.SUB_DIR }}
-        ./gradlew assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --no-daemon
 
-    # 搜尋編譯出來的 APK 並上傳
+    # 5. 收集編譯出來的 APK 並上傳
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
