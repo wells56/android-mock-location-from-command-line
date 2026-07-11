@@ -20,25 +20,38 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # 關鍵修正：安裝 Ubuntu 系統內建的 gradle，並強行在專案內建立 gradlew
-    - name: Install Gradle and Generate Wrapper
+    - name: Install Gradle and Fix Project Structure
       run: |
         sudo apt-get update && sudo apt-get install -y gradle
-        # 尋找 settings.gradle 或是 build.gradle 所在的目錄，那是真正的專案根目錄
+        
         BUILD_FILE_PATH=$(find . -name "build.gradle" -print -quit)
-        if [ -z "$BUILD_FILE_PATH" ]; then
-          echo "錯誤：專案中連 build.gradle 都找不到！"
-          exit 1
-        fi
         PROJECT_DIR=$(dirname "$BUILD_FILE_PATH")
         echo "找到 Android 專案目錄在: $PROJECT_DIR"
-        
-        # 切換進去並強行生成 gradlew 檔案
         cd "$PROJECT_DIR"
+        
+        # 強行生成相容舊專案的 Gradle Wrapper
         gradle wrapper --gradle-version 8.5
         chmod +x gradlew
         
-        # 紀錄目錄路徑供下一步使用
+        # 【關鍵修正】無中生有建立 settings.gradle，強制告訴 Gradle 去哪裡下載 Android 打包外掛
+        cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "android-mock-location-from-command-line"
+        EOF
+
         echo "SUB_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
     # 執行打包
@@ -54,3 +67,4 @@ jobs:
         name: my-mock-gps-apk
         path: |
           **/build/outputs/apk/debug/*.apk
+          **/build/outputs/apk/*.apk
